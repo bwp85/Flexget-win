@@ -1,0 +1,124 @@
+﻿secrets: config_user.yml
+templates:
+  Movie_Global:
+    tmdb_lookup: yes
+    imdb_lookup: no
+  TV_Global:
+    thetvdb_lookup: yes
+    imdb_lookup: no
+  Movie_List:
+    interval: 4 hours
+    accept_all: yes
+    imdb_lookup: yes
+    sort_by:
+      field: imdb_score
+      reverse: yes
+tasks:
+##############
+###TV Tasks###
+##############
+
+####Series####
+  TV_Series:
+    priority: 100
+    rss: { url: 'https://www.torrentday.com/torrents/rss?download;l26;l7;u={{ secrets.trackers.td.u }};tp={{ secrets.trackers.td.tp }}', silent: yes, all_entries: no }
+    series:
+      settings:
+        720_Group:
+          propers: yes
+          quality: 720p hdtv+
+        480_Group:
+          propers: yes
+          quality: sdtv|hdtv <720p
+    include: config_series.yml
+    regexp:
+      from: title
+    download: ~\flexget\new
+####Get Premiere Series####
+  Get_Premiere_Series:
+    priority: 120
+    thetvdb_lookup: yes
+    require_field:
+      - tvdb_genres
+      - tvdb_first_air_date
+    inputs:
+      - rss: { url: 'https://www.torrentday.com/torrents/rss?download;l26;u={{ secrets.trackers.td.u }};tp={{ secrets.trackers.td.tp }}', silent: yes, all_entries: no }
+    regexp:
+      reject:
+        - talk show: {from: tvdb_genres}
+        - game show: {from: tvdb_genres}
+        - reality: {from: tvdb_genres}
+        - children: {from: tvdb_genres}
+        - home and garden: {from: tvdb_genres}
+        - documentary: {from: tvdb_genres}
+    if:
+      - tvdb_first_air_date != None and tvdb_first_air_date < now - timedelta(days=60): reject
+    series_premiere:
+      propers: yes
+      quality: sdtv|hdtv <720p h264+
+    download: ~\flexget\new
+###################
+### MOVIE TASKS ###
+###################
+
+####Import Movies from Trakt####
+  Import_Trakt_Movies:
+    priority: 200
+    trakt_list:
+      username: '{{ secrets.trakt.bpuid }}'
+      password: '{{ secrets.trakt.bppassword }}'
+      list: watchlist
+      type: movies
+    accept_all: yes
+    movie_queue: add
+    template:
+      - Movie_Global
+####Import_By_Rating####
+  Get_High_Rating:
+    priority: 190
+    rss: { url: 'https://www.torrentday.com/torrents/rss?download;l11;u={{ secrets.trackers.td.u }};tp={{ secrets.trackers.td.tp }}', silent: yes, all_entries: no }
+    proper_movies: yes
+    imdb:
+      min_score: 7.2
+      min_votes: 3000
+      reject_genres:
+        - documentary
+        - musical
+        - biography
+    template:
+      - Movie_Global
+    trakt_add:
+      username: '{{ secrets.trakt.bpuid }}'
+      password: '{{ secrets.trakt.bppassword }}'
+      list: rated
+####Get Movies####
+  Trakt_Movies_TorrentDay:
+    priority: 240
+    proper_movies: yes
+    quality: 720p=> bluray h264 dts
+    movie_queue: accept
+    trakt_remove:
+      username: '{{ secrets.trakt.bpuid }}'
+      password: '{{ secrets.trakt.bppassword }}'
+      list: watchlist
+    regexp:
+      from: title
+      reject:
+        - EXTRAS
+        - SUBPACK
+        - SUBFIX
+        - FRENCH
+    download: ~\flexget\new
+    discover:
+      what:
+        - emit_movie_queue: yes
+      from:
+        - search_rss: { url: 'https://www.torrentday.com/torrents/rss?download;l11;u={{ secrets.trackers.td.u }};tp={{ secrets.trackers.td.tp }}', silent: yes, all_entries: no }
+        - kat:
+            category: movies
+            verified: yes
+        - piratebay:
+            category: "highres movies"
+            sort_by: seeds
+        - torrentz: verified
+      interval: 6 hours
